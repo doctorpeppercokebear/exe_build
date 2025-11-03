@@ -33,9 +33,24 @@
 *.lib
 
 # Executables
-*.exe
 *.out
 *.app
 
 # debug information files
 *.dwo
+
+
+
+# venv, build, pycache: ignore these directories anywhere in the repo
+# Ignore common virtual environment and build directories at any level
+venv/
+.venv/
+build/
+__pycache__/
+
+# Also ignore these names in any subdirectory (recursive)
+**/venv/
+**/.venv/
+**/build/
+**/__pycache__/
+

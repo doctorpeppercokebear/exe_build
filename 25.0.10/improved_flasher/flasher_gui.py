@@ -13,6 +13,8 @@ import os
 import serial.tools.list_ports
 import esptool
 import io
+import re
+import time
 from contextlib import redirect_stdout, redirect_stderr
 
 
@@ -40,28 +42,32 @@ class FirmwareFlasher:
         self.refresh_ports()
         self.check_initial_port()
         self.auto_refresh_ports()
-        
+
     def check_initial_port(self):
         """초기 포트 상태 확인 및 메시지 표시"""
         if self.port_var.get() and "찾을 수 없습니다" not in self.port_var.get():
-            self.log("ESP32 장치가 준비되었습니다. '펌웨어 업로드' 버튼을 클릭하세요.", "SUCCESS")
+            self.log(
+                "ESP32 장치가 준비되었습니다. '펌웨어 업로드' 버튼을 클릭하세요.",
+                "SUCCESS",
+            )
         else:
             self.log("USB 케이블로 ESP32-S3 장치를 연결하세요.", "WARNING")
 
     def auto_refresh_ports(self):
         """5초마다 자동으로 포트 재검색"""
-        if not self.is_flashing:    # 업로드 중이 아닐 때만 포트를 새로고침합니다.
+        if not self.is_flashing:  # 업로드 중이 아닐 때만 포트를 새로고침합니다.
             current_port = self.port_var.get()
             self.refresh_ports()
 
             # 새로운 포트가 발견되면 알림
             new_port = self.port_var.get()
-            if new_port != current_port and "찾을 수 없습니다" not in new_port:  # 점 제거
+            if (
+                new_port != current_port and "찾을 수 없습니다" not in new_port
+            ):  # 점 제거
                 self.log(f"새로운 장치 감지: {new_port}", "INFO")
 
-        # 5초 후에 다시 호출
-        self.root.after(5000, self.auto_refresh_ports)
-
+        # 30초 후에 다시 호출
+        self.root.after(30000, self.auto_refresh_ports)
 
     def setup_ui(self):
         """UI 구성"""
@@ -137,13 +143,23 @@ class FirmwareFlasher:
                 info_frame, text=f"{addr} - {os.path.basename(path)}", font=("Arial", 9)
             ).grid(row=idx, column=2, sticky=tk.W, padx=5)
 
-        # 진행률 바
+        # 진행률 바와 퍼센트 표시
+        progress_frame = ttk.Frame(main_frame)
+        progress_frame.grid(row=5, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
+
+        # 퍼센트 라벨
+        self.percent_var = tk.StringVar(value="0%")
+        percent_label = ttk.Label(
+            progress_frame, textvariable=self.percent_var, font=("Arial", 9)
+        )
+        percent_label.grid(row=0, column=0, columnspan=3)
+
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(
-            main_frame, variable=self.progress_var, maximum=100, length=400
+            progress_frame, variable=self.progress_var, maximum=100, length=400
         )
         self.progress_bar.grid(
-            row=5, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E)
+            row=1, column=0, columnspan=3, pady=(5, 0), sticky=(tk.W, tk.E)
         )
 
         # 상태 라벨
@@ -198,16 +214,19 @@ class FirmwareFlasher:
         """사용 가능한 COM 포트 새로고침 및 ESP32 자동 선택"""
         ports = serial.tools.list_ports.comports()
         port_list = [f"{port.device} - {port.description}" for port in ports]
-        
+
         # ESP32 포트 찾기
         esp32_port = None
         for port in ports:
             # ESP32-S3 관련 키워드 검색
             desc_lower = port.description.lower()
-            if any(keyword in desc_lower for keyword in ['esp32', 'cp210', 'ch340', 'serial', 'uart']):
+            if any(
+                keyword in desc_lower
+                for keyword in ["esp32", "cp210", "ch340", "serial", "uart"]
+            ):
                 esp32_port = f"{port.device} - {port.description}"
                 break
-        
+
         if not port_list:
             port_list = ["포트를 찾을 수 없습니다"]
             self.log("사용 가능한 COM 포트를 찾을 수 없습니다.", "WARNING")
@@ -216,9 +235,9 @@ class FirmwareFlasher:
             # ESP32 포트를 찾았으면 자동 선택
             if esp32_port:
                 self.log(f"ESP32 장치 자동 감지: {esp32_port}", "SUCCESS")
-        
+
         self.port_combo["values"] = port_list
-        
+
         # 포트 자동 선택
         if esp32_port:
             # ESP32 포트를 우선 선택
@@ -226,7 +245,6 @@ class FirmwareFlasher:
         elif port_list and "찾을 수 없습니다" not in port_list[0]:
             # ESP32가 없으면 첫 번째 포트 선택
             self.port_combo.current(0)
-
 
     def check_files(self):
         """필수 파일 존재 확인"""
@@ -253,35 +271,35 @@ class FirmwareFlasher:
         if self.is_flashing:
             messagebox.showwarning("경고", "이미 업로드가 진행 중입니다.")
             return
-        
+
         # 포트 자동 재검색
         if not self.port_var.get() or "찾을 수 없습니다" in self.port_var.get():
             self.log("포트를 찾을 수 없습니다. 재검색 중...", "WARNING")
             self.refresh_ports()
-            
+
             # 재검색 후에도 포트가 없으면
             if not self.port_var.get() or "찾을 수 없습니다" in self.port_var.get():
                 messagebox.showerror(
-                    "오류", 
+                    "오류",
                     "ESP32 장치를 찾을 수 없습니다.\n\n"
                     "1. USB 케이블이 연결되어 있는지 확인하세요.\n"
-                    "2. 드라이버가 설치되어 있는지 확인하세요."
+                    "2. 드라이버가 설치되어 있는지 확인하세요.",
                 )
                 return
-        
+
         # 파일 확인
         if not self.check_files():
             return
-        
+
         # 확인 대화상자 제거 - 바로 실행
         # (원하면 유지 가능)
         port_name = self.port_var.get().split(" - ")[0]
-        
+
         # 스레드로 업로드 실행
         self.is_flashing = True
         self.flash_btn.config(state="disabled")
         self.progress_var.set(0)
-        
+
         thread = threading.Thread(target=self.flash_firmware, args=(port_name,))
         thread.daemon = True
         thread.start()
@@ -296,6 +314,18 @@ class FirmwareFlasher:
             self.log(f"전송 속도: {self.baud_var.get()}")
             self.log(f"{'='*60}\n")
 
+            # 각 파일별 업로드 진행률 관리
+            files_to_flash = [
+                ("Bootloader", self.bootloader_path, "0x0"),
+                ("Partitions", self.partitions_path, "0x8000"),
+                ("Firmware", self.firmware_path, "0x10000"),
+            ]
+
+            total_files = len(files_to_flash)
+
+            # 연결 단계
+            self.update_progress(5, "ESP32-S3에 연결 중... (5%)")
+
             # esptool 명령 구성
             command = [
                 "--chip",
@@ -304,7 +334,7 @@ class FirmwareFlasher:
                 port,
                 "--baud",
                 self.baud_var.get(),
-                "--no-stub",            # 스텁 사용 안 함
+                "--no-stub",
                 "--before",
                 "default_reset",
                 "--after",
@@ -317,7 +347,7 @@ class FirmwareFlasher:
                 "80m",
                 "--flash_size",
                 "detect",
-                "0x0",                  # bootloader 주소 수정
+                "0x0",
                 self.bootloader_path,
                 "0x8000",
                 self.partitions_path,
@@ -325,23 +355,13 @@ class FirmwareFlasher:
                 self.firmware_path,
             ]
 
-            self.progress_var.set(10)
-            self.status_var.set("Bootloader 업로드 중...")
-            self.log("Bootloader 쓰는 중... (0x0)")
+            # 연결 완료
+            self.update_progress(10, "연결 완료, 펌웨어 업로드 시작... (10%)")
 
-            # esptool 출력을 캡처하여 로그에 표시
-            output_buffer = io.StringIO()
-            with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
-                esptool.main(command)
+            # esptool 실행 (출력을 실시간으로 캡처)
+            self.run_esptool_with_progress(command)
 
-            # 출력 로그에 표시
-            output = output_buffer.getvalue()
-            for line in output.split("\n"):
-                if line.strip():
-                    self.log(line.strip())
-
-            self.progress_var.set(100)
-            self.status_var.set("업로드 완료!")
+            self.update_progress(100, "업로드 완료! (100%)")
             self.log("\n" + "=" * 60)
             self.log("✓ 펌웨어 업로드가 성공적으로 완료되었습니다!", "SUCCESS")
             self.log("=" * 60 + "\n")
@@ -349,8 +369,7 @@ class FirmwareFlasher:
             messagebox.showinfo("성공", "펌웨어 업로드가 완료되었습니다!")
 
         except Exception as e:
-            self.progress_var.set(0)
-            self.status_var.set("오류 발생")
+            self.update_progress(0, "오류 발생")
             error_msg = f"펌웨어 업로드 중 오류 발생:\n{str(e)}"
             self.log(error_msg, "ERROR")
             messagebox.showerror("오류", error_msg)
@@ -358,6 +377,118 @@ class FirmwareFlasher:
         finally:
             self.is_flashing = False
             self.flash_btn.config(state="normal")
+
+    def update_progress(self, percentage, status_text):
+        """진행률과 상태 업데이트"""
+        self.progress_var.set(percentage)
+        self.percent_var.set(f"{int(percentage)}%")
+        self.status_var.set(status_text)
+        self.root.update_idletasks()
+
+    def run_esptool_with_progress(self, command):
+        """esptool 실행하면서 진행률 추적"""
+        import subprocess
+        import sys
+
+        # esptool 프로세스 실행
+        process = subprocess.Popen(
+            [sys.executable, "-m", "esptool"] + command[1:],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1,
+        )
+
+        current_phase = "연결"
+        file_names = ["Bootloader", "Partitions", "Firmware"]
+        file_addresses = ["0x00000000", "0x00008000", "0x00010000"]
+        current_file_index = -1
+        base_progress = 10  # 연결 완료 후 시작 진행률
+        phase_progress_range = 90 / 4  # 연결(10%) + 3개 파일(각 22.5%) = 100%
+
+        while True:
+            output = process.stdout.readline()
+            if output == "" and process.poll() is not None:
+                break
+
+            if output:
+                line = output.strip()
+                self.log(line)
+
+                # 연결 완료 감지
+                if "Chip is ESP32-S3" in line:
+                    self.update_progress(15, "ESP32-S3 감지 완료... (15%)")
+
+                elif "Uploading stub" in line:
+                    self.update_progress(20, "업로드 스텁 준비 중... (20%)")
+
+                # 각 파일 쓰기 시작 감지
+                elif "Writing" in line and "at 0x" in line:
+                    # 주소로 현재 파일 파악
+                    for i, addr in enumerate(file_addresses):
+                        if addr.replace("0x", "0x").lower() in line.lower():
+                            if current_file_index != i:
+                                current_file_index = i
+                                current_phase = file_names[i]
+                                base_file_progress = 25 + (i * phase_progress_range)
+                                self.update_progress(
+                                    base_file_progress,
+                                    f"{current_phase} 업로드 시작... ({int(base_file_progress)}%)",
+                                )
+                            break
+
+                    # 진행률 패턴 매칭 (예: "Writing at 0x00008000... (100 %)")
+                    progress_match = re.search(r"\((\d+)\s*%\)", line)
+                    if progress_match and current_file_index >= 0:
+                        file_percent = int(progress_match.group(1))
+
+                        # 전체 진행률 계산 (각 파일당 22.5% 할당)
+                        base_file_progress = 25 + (
+                            current_file_index * phase_progress_range
+                        )
+                        total_progress = base_file_progress + (
+                            file_percent * phase_progress_range / 100
+                        )
+
+                        current_file = file_names[current_file_index]
+                        status_text = (
+                            f"{current_file} 업로드 중... ({int(total_progress)}%)"
+                        )
+
+                        self.update_progress(total_progress, status_text)
+
+                # 파일 완료 감지
+                elif "Hash of data verified" in line and current_file_index >= 0:
+                    completed_file = file_names[current_file_index]
+                    completion_progress = 25 + (
+                        (current_file_index + 1) * phase_progress_range
+                    )
+                    status_text = (
+                        f"{completed_file} 완료! ({int(completion_progress)}%)"
+                    )
+                    self.update_progress(completion_progress, status_text)
+
+                    # 다음 파일 예고 (마지막 파일이 아닌 경우)
+                    if current_file_index < len(file_names) - 1:
+                        time.sleep(0.5)  # 잠시 완료 상태 표시
+                        next_file = file_names[current_file_index + 1]
+                        status_text = (
+                            f"{next_file} 준비 중... ({int(completion_progress)}%)"
+                        )
+                        self.update_progress(completion_progress, status_text)
+
+                # 하드 리셋 감지
+                elif "Hard resetting" in line:
+                    self.update_progress(95, "장치 재시작 중... (95%)")
+
+                # 오류 감지
+                elif "Error" in line or "Failed" in line:
+                    self.log(f"오류 감지: {line}", "ERROR")
+
+        # 프로세스 완료 대기
+        return_code = process.wait()
+        if return_code != 0:
+            raise Exception(f"esptool 실행 실패 (코드: {return_code})")
 
 
 def main():

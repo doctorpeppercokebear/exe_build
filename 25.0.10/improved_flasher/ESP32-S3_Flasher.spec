@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='ESP32-S3_Flasher',
+    name='v25.0.10_ESP32-S3_Flasher',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

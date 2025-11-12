@@ -22,8 +22,9 @@ class FirmwareFlasher:
     def __init__(self, root):
         self.root = root
         self.root.title("ESP32-S3 펌웨어 업로드 도구 v2.0")
-        self.root.geometry("700x600")
-        self.root.resizable(False, False)
+        self.root.geometry("800x700")
+        self.root.resizable(True, True)  # 사용자가 크기 조절 가능하게 변경
+        self.root.minsize(700, 600)  # 최소 크기 설정
 
         # 바이너리 파일 경로 설정
         if getattr(sys, "frozen", False):
@@ -145,29 +146,32 @@ class FirmwareFlasher:
 
         # 진행률 바와 퍼센트 표시
         progress_frame = ttk.Frame(main_frame)
-        progress_frame.grid(row=5, column=0, columnspan=3, pady=10, sticky=(tk.W, tk.E))
+        progress_frame.grid(row=5, column=0, columnspan=3, pady=15, sticky=(tk.W, tk.E))
+        progress_frame.columnconfigure(0, weight=1)  # 가운데 정렬을 위한 설정
 
-        # 퍼센트 라벨
+        # 퍼센트 라벨 (가운데 정렬)
         self.percent_var = tk.StringVar(value="0%")
         percent_label = ttk.Label(
-            progress_frame, textvariable=self.percent_var, font=("Arial", 9)
+            progress_frame, textvariable=self.percent_var, font=("Arial", 10, "bold")
         )
-        percent_label.grid(row=0, column=0, columnspan=3)
+        percent_label.grid(row=0, column=0, pady=(0, 5))
 
+        # 진행률 바 (가운데 정렬)
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(
-            progress_frame, variable=self.progress_var, maximum=100, length=400
+            progress_frame, variable=self.progress_var, maximum=100, length=450
         )
-        self.progress_bar.grid(
-            row=1, column=0, columnspan=3, pady=(5, 0), sticky=(tk.W, tk.E)
-        )
+        self.progress_bar.grid(row=1, column=0, pady=(0, 5), padx=20)
 
-        # 상태 라벨
+        # 상태 라벨 (가운데 정렬)
         self.status_var = tk.StringVar(value="준비됨")
         status_label = ttk.Label(
-            main_frame, textvariable=self.status_var, font=("Arial", 10)
+            main_frame,
+            textvariable=self.status_var,
+            font=("Arial", 10),
+            anchor="center",
         )
-        status_label.grid(row=6, column=0, columnspan=3, pady=5)
+        status_label.grid(row=6, column=0, columnspan=3, pady=10)
 
         # 로그 영역
         log_frame = ttk.LabelFrame(main_frame, text="로그", padding="5")
@@ -176,27 +180,35 @@ class FirmwareFlasher:
         )
 
         self.log_text = scrolledtext.ScrolledText(
-            log_frame, height=12, width=80, font=("Consolas", 9)
+            log_frame, height=15, width=90, font=("Consolas", 9), wrap=tk.WORD
         )
-        self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.log_text.grid(
+            row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5
+        )
 
         # 버튼 프레임
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.grid(row=8, column=0, columnspan=3, pady=10)
+        btn_frame.grid(row=8, column=0, columnspan=3, pady=15)
 
         self.flash_btn = ttk.Button(
-            btn_frame, text="펌웨어 업로드 시작", command=self.start_flashing, width=25
+            btn_frame, text="펌웨어 업로드 시작", command=self.start_flashing, width=28
         )
-        self.flash_btn.grid(row=0, column=0, padx=5)
+        self.flash_btn.grid(row=0, column=0, padx=10, pady=5)
 
         self.clear_btn = ttk.Button(
-            btn_frame, text="로그 지우기", command=self.clear_log, width=15
+            btn_frame, text="로그 지우기", command=self.clear_log, width=18
         )
-        self.clear_btn.grid(row=0, column=1, padx=5)
+        self.clear_btn.grid(row=0, column=1, padx=10, pady=5)
 
-        # 그리드 가중치 설정
+        # 그리드 가중치 설정 - 창 크기 조정 시 레이아웃 최적화
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+
+        main_frame.columnconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
-        main_frame.rowconfigure(7, weight=1)
+        main_frame.columnconfigure(2, weight=1)
+        main_frame.rowconfigure(7, weight=1)  # 로그 영역이 확장되도록
+
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
 
